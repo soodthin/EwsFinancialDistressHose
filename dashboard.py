@@ -1019,24 +1019,36 @@ def calculate_altman_z_score(data, ratios):
 
     return z_score, zone
 
-def calculate_s_score(data, ratios):
+def calculate_s_score(data, _ratios=None):
     """
-    Calculate S-Score for emerging markets
-    Based on profitability, leverage, and liquidity
+    Calculate S-Score using Springate (1978) model
+    S = 1.03*A + 3.07*B + 0.66*C + 0.40*D
+    A = Working Capital / Total Assets
+    B = EBIT / Total Assets
+    C = Income before Taxes / Total Current Liabilities
+    D = Revenue / Total Assets
+    Cutoff: S < 0.862 => Distress
     """
-    roa = ratios.get('ROA', 0)
-    leverage = ratios.get('LEV', 0)
-    current_ratio = ratios.get('CUR', 0)
+    total_assets = data.get('Total Assets', 0)
+    total_current_assets = data.get('Total Current Assets', 0)
+    total_current_liabilities = data.get('Total Current Liabilities', 0)
+    ebit = data.get('EBIT', 0)
+    income_before_taxes = data.get('Income before Taxes', 0)
+    revenue = data.get('Revenue', 0)
 
-    # S-Score formula (simplified)
-    # Higher is better
-    s_score = 2.5 * roa - 0.5 * leverage + 0.3 * min(current_ratio, 3)
+    if total_assets == 0 or total_current_liabilities == 0:
+        return None, "N/A"
 
-    # Interpretation
-    if s_score > 0.8:
+    a = (total_current_assets - total_current_liabilities) / total_assets
+    b = ebit / total_assets
+    c = income_before_taxes / total_current_liabilities
+    d = revenue / total_assets
+
+    s_score = 1.03 * a + 3.07 * b + 0.66 * c + 0.40 * d
+
+    # Interpretation (Springate cutoff = 0.862)
+    if s_score >= 0.862:
         zone = "Safe"
-    elif s_score > 0.4:
-        zone = "Watch"
     else:
         zone = "Distress"
 
@@ -1095,7 +1107,7 @@ def calculate_ews_signals(data, ratios):
     elif signals['n_signals'] == 1:
         signals['ews_level'] = 'Watchlist'
     else:
-        signals['ews_level'] = 'Distress'
+        signals['ews_level'] = 'High Risk'
 
     return signals
 
@@ -1121,7 +1133,7 @@ def generate_recommendations(signals, ratios, data):
         if ratios.get('LEV', 0) > 0.6:
             recommendations.append("Consider debt restructuring or increasing equity capital.")
 
-    else:  # Distress
+    else:  # High Risk
         recommendations.append("WARNING: The company shows strong signs of financial distress.")
         recommendations.append("Urgent action is required:")
 
@@ -1490,7 +1502,7 @@ def render_analysis(year_data, all_data, selected_year):
     recommendations = generate_recommendations(signals, ratios, year_data)
 
     # Calculate priority flag
-    priority_flag = 1 if signals['n_signals'] >= 2 or signals['ews_level'] == 'Distress' else 0
+    priority_flag = 1 if signals['n_signals'] >= 2 or signals['ews_level'] == 'High Risk' else 0
 
     # Calculate risk trend and YoY changes
     risk_trend = "Stable"
@@ -2077,8 +2089,8 @@ def generate_executive_summary(signals, ratios, num_years, all_data, selected_ye
                 "to prevent further risk escalation."
             )
 
-    else:  # Distress
-        # Template 4: Distress
+    else:  # High Risk
+        # Template 4: High Risk
         summary = (
             "The analysis of the uploaded financial statements indicates that the firm exhibits multiple <strong>financial distress</strong> warning signals. "
             "Multiple financial indicators exceed risk thresholds, reflecting pressure on profitability, liquidity, or capital structure. "
@@ -2355,7 +2367,7 @@ def render_csv_analysis(df, df_company, df_year, selected_code, selected_year):
                         color_discrete_map={
                             'Safe': '#2ECC71',
                             'Watchlist': '#F1C40F',
-                            'Distress': '#E74C3C'
+                            'High Risk': '#E74C3C'
                         },
                         title="EBIT vs Interest Expense"
                     )
@@ -2427,8 +2439,8 @@ def render_csv_analysis(df, df_company, df_year, selected_code, selected_year):
                 st.success(f"Safe: {ews_summary.get('Safe', 0)}")
             if "Watchlist" in ews_summary:
                 st.warning(f"Watchlist: {ews_summary.get('Watchlist', 0)}")
-            if "Distress" in ews_summary:
-                st.error(f"Distress: {ews_summary.get('Distress', 0)}")
+            if "High Risk" in ews_summary:
+                st.error(f"High Risk: {ews_summary.get('High Risk', 0)}")
 
         with col_chart:
             ews_count = (
@@ -2441,7 +2453,7 @@ def render_csv_analysis(df, df_company, df_year, selected_code, selected_year):
             ews_colors = {
                 "Safe": "#2ECC71",
                 "Watchlist": "#F1C40F",
-                "Distress": "#E74C3C"
+                "High Risk": "#E74C3C"
             }
 
             fig_ews = px.bar(
