@@ -12,7 +12,7 @@ import io
 # 1. CONFIG
 # -----------------------------------------
 st.set_page_config(
-    page_title="Financial Distress EWS Dashboard",
+    page_title="Financial High Risk EWS Dashboard",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -950,7 +950,7 @@ def calculate_financial_ratios(data):
         ratios['FAR'] = fixed_assets / total_assets if fixed_assets else 0
         ratios['SIZE'] = np.log(total_assets)
         ratios['Retained_Earnings_to_Assets'] = retained_earnings / total_assets if retained_earnings else 0
-        ratios['Working_Capital_to_Assets'] = (current_assets - current_liabilities) / total_assets
+        ratios['WC_Assets'] = (current_assets - current_liabilities) / total_assets
         ratios['Equity_to_Assets'] = equity / total_assets if equity else 0
 
     if current_liabilities > 0:
@@ -1015,7 +1015,7 @@ def calculate_altman_z_score(data, ratios):
     elif z_score > 1.1:
         zone = "Grey Zone"
     else:
-        zone = "Distress Zone"
+        zone = "High Risk Zone"
 
     return z_score, zone
 
@@ -1050,7 +1050,7 @@ def calculate_s_score(data, _ratios=None):
     if s_score >= 0.862:
         zone = "Safe"
     else:
-        zone = "Distress"
+        zone = "High Risk"
 
     return s_score, zone
 
@@ -1075,9 +1075,9 @@ def calculate_ews_signals(data, ratios):
 
     # Signal 2: Z-Score
     z_score, z_zone = calculate_altman_z_score(data, ratios)
-    if z_score is not None and z_zone == "Distress Zone":
+    if z_score is not None and z_zone == "High Risk Zone":
         signals['signal_z'] = 1
-        signals['drivers'].append(f"Altman Z-Score = {z_score:.2f} - Financial distress zone")
+        signals['drivers'].append(f"Altman Z-Score = {z_score:.2f} - High risk zone")
 
     # Signal 3: S-Score (Springate 1978, cutoff = 0.862)
     s_score, s_zone = calculate_s_score(data, ratios)
@@ -1134,7 +1134,7 @@ def generate_recommendations(signals, ratios, data):
             recommendations.append("Consider debt restructuring or increasing equity capital.")
 
     else:  # High Risk
-        recommendations.append("WARNING: The company shows strong signs of financial distress.")
+        recommendations.append("WARNING: The company shows strong signs of financial high risk.")
         recommendations.append("Urgent action is required:")
 
         if signals.get('signal_ebit') == 1:
@@ -1251,8 +1251,8 @@ def create_ratio_comparison_chart(ratios, year):
 # -----------------------------------------
 
 def main():
-    st.title("Financial Distress Early Warning System (EWS)")
-    st.caption("Early Warning System for Financial Distress | Upload Financial Statements for Analysis")
+    st.title("Financial Risk Early Warning System (EWS)")
+    st.caption("Early Warning System for Financial Risk | Upload Financial Statements for Analysis")
 
     # Sidebar
     st.sidebar.header("Data Input Method")
@@ -1605,10 +1605,10 @@ def render_analysis(year_data, all_data, selected_year):
         st.caption("Please verify that the data has been read correctly before proceeding with the analysis.")
 
     # =========================================
-    # PART 3: Financial Distress Signal Assessment
+    # PART 3: Financial Risk Signal Assessment
     # =========================================
     st.markdown("---")
-    st.markdown('<p class="section-title">3. Financial Distress Signal Assessment</p>', unsafe_allow_html=True)
+    st.markdown('<p class="section-title">3. Financial Risk Signal Assessment</p>', unsafe_allow_html=True)
 
     with st.container(border=True):
         col_left, col_right = st.columns([2, 3])
@@ -1634,7 +1634,7 @@ def render_analysis(year_data, all_data, selected_year):
             else:
                 st.markdown(f"""
                 <div class="risk-distress">
-                    <h2>DISTRESS</h2>
+                    <h2>HIGH RISK</h2>
                     <p>Warning Signals: {n_signals}/3</p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1734,7 +1734,7 @@ def render_analysis(year_data, all_data, selected_year):
                     'Relative Position': "Lower than median" if far <= far_med else "Higher than median"
                 })
 
-                wc = ratios.get('Working_Capital_to_Assets', None)
+                wc = ratios.get('WC_Assets', None)
                 wc_med = median_ref.get('WC_Assets', None)
 
                 if wc is not None:
@@ -1919,13 +1919,13 @@ def render_analysis(year_data, all_data, selected_year):
             df_trend = pd.DataFrame(trend_data)
 
             with col_chart1:
-                st.markdown("**Distress Signals Over Time**")
+                st.markdown("**Warning Signals Over Time**")
                 fig_trend = px.line(
                     df_trend,
                     x="Year",
                     y="n_signals",
                     markers=True,
-                    title="Number of distress signals over time"
+                    title="Number of warning signals over time"
                 )
                 # Add annotation for selected year
                 selected_row = df_trend[df_trend['Year'] == selected_year]
@@ -1976,7 +1976,7 @@ def render_analysis(year_data, all_data, selected_year):
         status_text = "WATCHLIST"
     else:
         box_style = "background: linear-gradient(135deg, #E74C3C 0%, #C0392B 100%);"
-        status_text = "DISTRESS"
+        status_text = "HIGH RISK"
 
     st.markdown(f"""
     <div style="{box_style} color: white; padding: 1.5rem; border-radius: 15px; margin-bottom: 1rem;">
@@ -2060,14 +2060,14 @@ def generate_executive_summary(signals, ratios, num_years, all_data, selected_ye
         if num_years == 1:
             summary = (
                 "Based on the uploaded financial statements, the firm is currently classified as <strong>financially stable</strong>. "
-                "No major financial distress signals are triggered in the reporting period. "
+                "No major financial risk signals are triggered in the reporting period. "
                 "Key profitability and liquidity indicators remain within acceptable ranges. "
                 "However, regular monitoring is recommended to ensure that any potential deterioration in operating performance is detected early."
             )
         else:
             summary = (
                 "Based on the uploaded financial statements, the firm is currently assessed as <strong>financially stable</strong> based on the early warning signals. "
-                "While no immediate financial distress is identified in the most recent year, certain financial indicators show signs of fluctuation over time. "
+                "While no immediate financial risk is identified in the most recent year, certain financial indicators show signs of fluctuation over time. "
                 "Continued monitoring of profitability and liquidity trends is recommended to prevent potential risk accumulation."
             )
 
@@ -2076,7 +2076,7 @@ def generate_executive_summary(signals, ratios, num_years, all_data, selected_ye
             # Template 3: Watchlist + Worsening trend
             summary = (
                 "The firm is currently classified as <strong>Watchlist</strong> based on the uploaded financial statements. "
-                "Although the firm has not entered financial distress, the number of warning signals has increased compared to the previous period. "
+                "Although the firm has not entered financial high risk, the number of warning signals has increased compared to the previous period. "
                 "This suggests a deterioration in financial conditions, and proactive risk management actions are advised, "
                 "particularly in areas showing declining performance."
             )
@@ -2085,14 +2085,14 @@ def generate_executive_summary(signals, ratios, num_years, all_data, selected_ye
             summary = (
                 "Based on the uploaded financial statements, the firm is classified under the <strong>Watchlist</strong> category. "
                 "One or more early warning signals are triggered, indicating potential weaknesses in profitability or liquidity. "
-                "While no immediate financial distress is identified, closer monitoring of key financial indicators is recommended "
+                "While no immediate financial risk is identified, closer monitoring of key financial indicators is recommended "
                 "to prevent further risk escalation."
             )
 
     else:  # High Risk
         # Template 4: High Risk
         summary = (
-            "The analysis of the uploaded financial statements indicates that the firm exhibits multiple <strong>financial distress</strong> warning signals. "
+            "The analysis of the uploaded financial statements indicates that the firm exhibits multiple <strong>financial high risk</strong> warning signals. "
             "Multiple financial indicators exceed risk thresholds, reflecting pressure on profitability, liquidity, or capital structure. "
             "Immediate attention and corrective actions are recommended to mitigate financial risk and stabilize operations."
         )
@@ -2137,7 +2137,7 @@ def generate_ai_summary(data, ratios, signals, z_score, z_zone, s_score, s_zone,
             )
         else:
             summary_parts.append(
-                f"Altman Z-Score = {z_score:.2f} is in the distress zone, immediate action needed."
+                f"Altman Z-Score = {z_score:.2f} is in the high risk zone, immediate action needed."
             )
 
     # Key ratios analysis
@@ -2220,9 +2220,9 @@ def render_csv_analysis(df, df_company, df_year, selected_code, selected_year):
         if row.get("signal_ebit", 0) == 1:
             drivers.append("Weak earnings coverage (EBIT < Interest Expense)")
         if row.get("signal_z", 0) == 1:
-            drivers.append("Altman Z''-score distress signal")
+            drivers.append("Altman Z''-score high risk signal")
         if row.get("signal_s", 0) == 1:
-            drivers.append("S-score distress signal")
+            drivers.append("S-score high risk signal")
         if not drivers:
             return "No early-warning signal triggered"
         return "; ".join(drivers)
@@ -2303,13 +2303,13 @@ def render_csv_analysis(df, df_company, df_year, selected_code, selected_year):
             col_chart1, col_chart2 = st.columns(2)
 
             with col_chart1:
-                st.markdown("**Distress Signals Over Time**")
+                st.markdown("**Warning Signals Over Time**")
                 fig_trend = px.line(
                     df_company,
                     x="Year",
                     y="n_signals",
                     markers=True,
-                    title="Number of distress signals over time"
+                    title="Number of warning signals over time"
                 )
 
                 if not latest.empty:
