@@ -1079,9 +1079,9 @@ def calculate_ews_signals(data, ratios):
         signals['signal_z'] = 1
         signals['drivers'].append(f"Altman Z-Score = {z_score:.2f} - Financial distress zone")
 
-    # Signal 3: S-Score
+    # Signal 3: S-Score (Springate 1978, cutoff = 0.862)
     s_score, s_zone = calculate_s_score(data, ratios)
-    if s_zone == "Distress":
+    if s_score is not None and s_score < 0.862:
         signals['signal_s'] = 1
         signals['drivers'].append(f"S-Score = {s_score:.2f} - High risk")
 
