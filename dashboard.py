@@ -238,7 +238,7 @@ hr {
     align-items: center;
 }
 
-.risk-distress {
+.risk-high-risk {
     background: linear-gradient(135deg, #E74C3C 0%, #C0392B 100%);
     color: white;
     padding: 2rem 1.5rem;
@@ -252,14 +252,14 @@ hr {
     align-items: center;
 }
 
-.risk-safe h2, .risk-watchlist h2, .risk-distress h2 {
+.risk-safe h2, .risk-watchlist h2, .risk-high-risk h2 {
     font-size: 1.8rem;
     margin-bottom: 0.5rem;
     font-weight: 800;
     text-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
-.risk-safe p, .risk-watchlist p, .risk-distress p {
+.risk-safe p, .risk-watchlist p, .risk-high-risk p {
     font-size: 1rem;
     opacity: 0.95;
     margin: 0;
@@ -975,7 +975,7 @@ def calculate_financial_ratios(data):
     return ratios
 
 # -----------------------------------------
-# 5. FINANCIAL DISTRESS MODELS
+# 5. FINANCIAL RISK MODELS
 # -----------------------------------------
 
 def calculate_altman_z_score(data, ratios):
@@ -1027,7 +1027,7 @@ def calculate_s_score(data, _ratios=None):
     B = EBIT / Total Assets
     C = Income before Taxes / Total Current Liabilities
     D = Revenue / Total Assets
-    Cutoff: S < 0.862 => Distress
+    Cutoff: S < 0.862 => High Risk
     """
     total_assets = data.get('Total Assets', 0)
     total_current_assets = data.get('Total Current Assets', 0)
@@ -1633,7 +1633,7 @@ def render_analysis(year_data, all_data, selected_year):
                 """, unsafe_allow_html=True)
             else:
                 st.markdown(f"""
-                <div class="risk-distress">
+                <div class="risk-high-risk">
                     <h2>HIGH RISK</h2>
                     <p>Warning Signals: {n_signals}/3</p>
                 </div>
