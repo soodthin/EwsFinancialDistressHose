@@ -1668,12 +1668,12 @@ def render_analysis(year_data, all_data, selected_year):
             with gauge_col2:
                 fig_s = create_gauge_chart(
                     s_score,
-                    f"S-Score",
-                    -1, 2, [0.4, 0.8]
+                    f"S-Score (Springate)",
+                    -1, 3, [0.862, 0.862]
                 )
                 fig_s.update_layout(height=220)
                 st.plotly_chart(fig_s, use_container_width=True)
-                zone_color = "#2ECC71" if s_zone == "Safe" else ("#F1C40F" if s_zone == "Watch" else "#E74C3C")
+                zone_color = "#2ECC71" if s_zone == "Safe" else "#E74C3C"
                 st.markdown(f'<p style="text-align:center; color:{zone_color}; font-weight:600;">{s_zone}</p>', unsafe_allow_html=True)
 
     # =========================================
