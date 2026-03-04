@@ -1246,6 +1246,147 @@ def create_ratio_comparison_chart(ratios, year):
 
     return fig
 
+def apply_interest_coverage_layout(fig):
+    """Apply consistent layout for EBIT vs Interest coverage scatter chart."""
+    axis_style = dict(
+        type="log",
+        tickmode="auto",
+        nticks=7,
+        tickformat="~s",
+        exponentformat="SI",
+        automargin=True
+    )
+
+    fig.update_xaxes(title_text="Interest Expense", title_standoff=18, **axis_style)
+    fig.update_yaxes(title_text="EBIT", title_standoff=12, **axis_style)
+    fig.update_layout(
+        title=dict(
+            text="EBIT vs Interest Expense (Interest Coverage)",
+            x=0.01,
+            xanchor="left"
+        ),
+        height=500,
+        margin=dict(l=70, r=30, t=110, b=70),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.03,
+            xanchor="left",
+            x=0.0,
+            title_text="",
+            font=dict(size=11)
+        )
+    )
+    return fig
+
+def create_interest_coverage_chart(df_input, interest_col, ebit_col, year_col="Year", ews_col="ews_level", marker_size=11):
+    """Create EBIT vs Interest scatter chart with 1x/2x coverage reference lines."""
+    ews_levels = ['Safe', 'Watchlist', 'High Risk']
+    ews_colors = {'Safe': '#2ECC71', 'Watchlist': '#F1C40F', 'High Risk': '#E74C3C'}
+
+    required_cols = [interest_col, ebit_col, ews_col]
+    if year_col in df_input.columns:
+        required_cols.append(year_col)
+
+    df_valid = df_input.dropna(subset=required_cols).copy()
+    if year_col not in df_valid.columns:
+        df_valid[year_col] = ""
+
+    df_plot = df_valid[(df_valid[ebit_col] > 0) & (df_valid[interest_col] > 0)].copy()
+    df_interest_non_positive = df_valid[df_valid[interest_col] <= 0].copy()
+    df_ebit_non_positive = df_valid[df_valid[ebit_col] <= 0].copy()
+    df_high_risk_interest_non_positive = df_interest_non_positive[df_interest_non_positive[ews_col] == 'High Risk'].copy()
+
+    if df_plot.empty:
+        return {
+            "fig": None,
+            "n_interest_non_positive": len(df_interest_non_positive),
+            "n_ebit_non_positive": len(df_ebit_non_positive),
+            "high_risk_interest_non_positive_years": df_high_risk_interest_non_positive[year_col].astype(str).tolist()
+        }
+
+    df_plot['Coverage'] = df_plot[ebit_col] / df_plot[interest_col]
+    fig = go.Figure()
+
+    # Keep all three EWS levels visible in legend even when one group has no points.
+    for level in ews_levels:
+        df_lev = df_plot[df_plot[ews_col] == level]
+        if df_lev.empty:
+            x_vals = [None]
+            y_vals = [None]
+            text_vals = [None]
+            coverage_vals = [None]
+        else:
+            x_vals = df_lev[interest_col]
+            y_vals = df_lev[ebit_col]
+            text_vals = df_lev[year_col].astype(str)
+            coverage_vals = df_lev['Coverage']
+
+        fig.add_trace(go.Scatter(
+            x=x_vals,
+            y=y_vals,
+            mode='markers',
+            name=level,
+            marker=dict(color=ews_colors[level], size=marker_size, opacity=0.85),
+            text=text_vals,
+            hovertemplate=(
+                "Year: %{text}<br>"
+                "Interest: %{x:,.0f}<br>"
+                "EBIT: %{y:,.0f}<br>"
+                "Coverage: %{customdata:.2f}x<extra></extra>"
+            ),
+            customdata=coverage_vals,
+            showlegend=True
+        ))
+
+    x_min = df_plot[interest_col].min() * 0.5
+    x_max = df_plot[interest_col].max() * 2
+    x_range = [x_min, x_max]
+
+    fig.add_trace(go.Scatter(
+        x=x_range,
+        y=x_range,
+        mode='lines',
+        name='Coverage = 1x (break-even)',
+        line=dict(color='#E74C3C', width=2, dash='dash'),
+        showlegend=True
+    ))
+    fig.add_trace(go.Scatter(
+        x=x_range,
+        y=[x * 2 for x in x_range],
+        mode='lines',
+        name='Coverage = 2x (safe margin)',
+        line=dict(color='#2ECC71', width=2, dash='dash'),
+        showlegend=True
+    ))
+
+    fig.add_annotation(
+        x=x_max,
+        y=x_max,
+        text="1x break-even",
+        showarrow=False,
+        xanchor="left",
+        yanchor="bottom",
+        font=dict(size=11, color="#E74C3C")
+    )
+    fig.add_annotation(
+        x=x_max,
+        y=x_max * 2,
+        text="2x safe margin",
+        showarrow=False,
+        xanchor="left",
+        yanchor="bottom",
+        font=dict(size=11, color="#2ECC71")
+    )
+
+    fig = apply_interest_coverage_layout(fig)
+    return {
+        "fig": fig,
+        "n_interest_non_positive": len(df_interest_non_positive),
+        "n_ebit_non_positive": len(df_ebit_non_positive),
+        "high_risk_interest_non_positive_years": df_high_risk_interest_non_positive[year_col].astype(str).tolist()
+    }
+
 # -----------------------------------------
 # 7. MAIN APPLICATION
 # -----------------------------------------
@@ -1756,130 +1897,51 @@ def render_analysis(year_data, all_data, selected_year):
                 )
 
         with tab2:
-            # EBIT vs Interest Expense Analysis
-            ebit = year_data.get('EBIT', 0)
-            interest = year_data.get('Interest Expense', 0)
+            # EBIT vs Interest Expense Analysis (coverage scatter)
+            scatter_rows = []
+            for year in sorted(all_data.keys()):
+                yr_data = all_data[year]
+                yr_ratios = calculate_financial_ratios(yr_data)
+                yr_signals = calculate_ews_signals(yr_data, yr_ratios)
+                scatter_rows.append({
+                    'Year': str(year),
+                    'EBIT': yr_data.get('EBIT', 0),
+                    'Interest': yr_data.get('Interest Expense', 0),
+                    'ews_level': yr_signals.get('ews_level', 'Safe')
+                })
 
-            # Check if company has net financial income (negative interest expense)
-            has_net_financial_income = interest < 0
+            df_scatter = pd.DataFrame(scatter_rows)
+            coverage_chart = create_interest_coverage_chart(
+                df_input=df_scatter,
+                interest_col='Interest',
+                ebit_col='EBIT',
+                year_col='Year',
+                ews_col='ews_level',
+                marker_size=12
+            )
 
-            if num_years > 1:
-                # Multiple years: show bar chart for trend
-                col_chart, col_info = st.columns([3, 2])
-
-                with col_chart:
-                    # Prepare data for bar chart
-                    chart_data = []
-                    for year in sorted(all_data.keys()):
-                        data = all_data[year]
-                        chart_data.append({
-                            'Year': str(year),
-                            'EBIT': data.get('EBIT', 0) / 1e9,
-                            'Interest Expense': abs(data.get('Interest Expense', 0)) / 1e9,
-                            'Type': 'Net Financial Income' if data.get('Interest Expense', 0) < 0 else 'Interest Expense'
-                        })
-
-                    df_chart = pd.DataFrame(chart_data)
-
-                    fig_bar = go.Figure()
-                    fig_bar.add_trace(go.Bar(
-                        name='EBIT',
-                        x=df_chart['Year'],
-                        y=df_chart['EBIT'],
-                        marker_color='#3182ce',
-                        text=[f"{v:,.1f}" for v in df_chart['EBIT']],
-                        textposition='auto'
-                    ))
-                    fig_bar.add_trace(go.Bar(
-                        name='Interest Expense' if not has_net_financial_income else 'Net Financial Income',
-                        x=df_chart['Year'],
-                        y=df_chart['Interest Expense'],
-                        marker_color='#E74C3C' if not has_net_financial_income else '#2ECC71',
-                        text=[f"{v:,.1f}" for v in df_chart['Interest Expense']],
-                        textposition='auto'
-                    ))
-                    fig_bar.update_layout(
-                        title='EBIT vs Interest Expense Over Time (Billion VND)',
-                        barmode='group',
-                        yaxis_title='Value (Billion VND)',
-                        height=400,
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="rgba(0,0,0,0)"
-                    )
-                    st.plotly_chart(fig_bar, use_container_width=True)
-
-                with col_info:
-                    st.markdown("**Interest Coverage Analysis:**")
-
-                    if has_net_financial_income:
-                        st.success("Net Financial Income")
-                        st.markdown(f"**Financial Revenue > Financial Expenses**")
-                        st.markdown(f"Net Financial Income: **{abs(interest)/1e9:,.1f} B**")
-                        st.markdown("The company earns more from financial activities than it pays in interest.")
-                    else:
-                        coverage = ebit / interest if interest > 0 else 0
-                        st.metric("Interest Coverage Ratio", f"{coverage:.2f}x")
-
-                        if interest > 0 and ebit < interest:
-                            st.error("Earnings before Interest & Taxes (EBIT) < Interest Expense")
-                            st.markdown("The firm **cannot cover** interest payments from operating earnings.")
-                        elif coverage > 0 and coverage < 2:
-                            st.warning("Coverage < 2x")
-                            st.markdown("Interest coverage is **moderate**, requires monitoring.")
-                        elif coverage >= 2:
-                            st.success(f"Coverage = {coverage:.1f}x")
-                            st.markdown("**Strong** interest coverage.")
+            if coverage_chart["fig"] is not None:
+                st.plotly_chart(coverage_chart["fig"], use_container_width=True)
+                st.caption(
+                    "Above 2x line: strong interest-paying buffer. "
+                    "Between 1x and 2x: moderate buffer. "
+                    "Near or below 1x: rising repayment pressure and higher risk of warning signals."
+                )
             else:
-                # Single year: show bar chart
-                if ebit:
-                    col_ebit_chart, col_ebit_info = st.columns([3, 2])
+                st.info("Insufficient positive EBIT and Interest values for coverage scatter chart.")
 
-                    with col_ebit_chart:
-                        # Determine label and color based on interest expense sign
-                        int_label = 'Net Financial Income' if has_net_financial_income else 'Interest Expense'
-                        int_color = '#2ECC71' if has_net_financial_income else '#E74C3C'
-                        int_value = abs(interest) / 1e9
+            n_interest_non_positive = coverage_chart["n_interest_non_positive"]
+            if n_interest_non_positive > 0:
+                st.info(f"{n_interest_non_positive} year(s) Interest <= 0 not applicable for coverage lines.")
 
-                        fig_ebit = go.Figure()
-                        fig_ebit.add_trace(go.Bar(
-                            x=['EBIT', int_label],
-                            y=[ebit/1e9, int_value],
-                            marker_color=['#3182ce', int_color],
-                            text=[f"{ebit/1e9:,.1f}", f"{int_value:,.1f}"],
-                            textposition='auto'
-                        ))
-                        fig_ebit.update_layout(
-                            title='EBIT vs Interest Expense (Billion VND)',
-                            yaxis_title='Value (Billion VND)',
-                            height=350,
-                            paper_bgcolor="rgba(0,0,0,0)",
-                            plot_bgcolor="rgba(0,0,0,0)"
-                        )
-                        st.plotly_chart(fig_ebit, use_container_width=True)
+            high_risk_non_applicable_years = coverage_chart["high_risk_interest_non_positive_years"]
+            if high_risk_non_applicable_years:
+                years_text = ", ".join(high_risk_non_applicable_years)
+                st.warning(f"High Risk year(s) with Interest <= 0 are not plotted for coverage lines: {years_text}.")
 
-                    with col_ebit_info:
-                        st.markdown("**Interest Coverage Analysis:**")
-
-                        if has_net_financial_income:
-                            st.success("Net Financial Income")
-                            st.markdown(f"**Financial Revenue > Financial Expenses**")
-                            st.markdown(f"Net Financial Income: **{abs(interest)/1e9:,.1f} B**")
-                            st.markdown("The company earns more from financial activities than it pays in interest.")
-                        else:
-                            coverage = ebit / interest if interest > 0 else 0
-                            st.metric("Interest Coverage Ratio", f"{coverage:.2f}x")
-
-                            if interest > 0 and ebit < interest:
-                                st.error("Earnings before Interest & Taxes (EBIT) < Interest Expense")
-                                st.markdown("The firm **cannot cover** interest payments.")
-                            elif coverage > 0 and coverage < 2:
-                                st.warning("Coverage < 2x")
-                                st.markdown("Interest coverage is **moderate**.")
-                            elif coverage >= 2:
-                                st.success(f"Coverage = {coverage:.1f}x")
-                                st.markdown("**Strong** interest coverage.")
-                else:
-                    st.info("Insufficient EBIT data for analysis.")
+            n_ebit_non_positive = coverage_chart["n_ebit_non_positive"]
+            if n_ebit_non_positive > 0:
+                st.info(f"{n_ebit_non_positive} year(s) with EBIT <= 0 are excluded from log-scale coverage scatter.")
 
         # Add Recommendation at the end of Detailed Analysis
         st.markdown("---")
@@ -2351,56 +2413,42 @@ def render_csv_analysis(df, df_company, df_year, selected_code, selected_year):
 
         with tab_ebit:
             interest_col = "Interest Expense - Net of (Interest Income)"
+            ebit_col = "Earnings before Interest & Taxes (EBIT)"
 
-            if interest_col in df_company.columns:
-                df_scatter = df_company.dropna(subset=["Earnings before Interest & Taxes (EBIT)", interest_col])
-                df_scatter = df_scatter[
-                    (df_scatter["Earnings before Interest & Taxes (EBIT)"] > 0) & (df_scatter[interest_col] > 0)
-                ]
+            if interest_col in df_company.columns and ebit_col in df_company.columns:
+                coverage_chart = create_interest_coverage_chart(
+                    df_input=df_company,
+                    interest_col=interest_col,
+                    ebit_col=ebit_col,
+                    year_col='Year',
+                    ews_col='ews_level',
+                    marker_size=10
+                )
 
-                if not df_scatter.empty:
-                    fig_scatter = px.scatter(
-                        df_scatter,
-                        x=interest_col,
-                        y="Earnings before Interest & Taxes (EBIT)",
-                        color="ews_level",
-                        color_discrete_map={
-                            'Safe': '#2ECC71',
-                            'Watchlist': '#F1C40F',
-                            'High Risk': '#E74C3C'
-                        },
-                        title="EBIT vs Interest Expense"
+                if coverage_chart["fig"] is not None:
+                    st.plotly_chart(coverage_chart["fig"], use_container_width=True)
+                    st.caption(
+                        "Above 2x line: strong interest-paying buffer. "
+                        "Between 1x and 2x: moderate buffer. "
+                        "Near or below 1x: rising repayment pressure and higher risk of warning signals."
                     )
+                else:
+                    st.info("Insufficient positive EBIT and Interest values for coverage scatter chart.")
 
-                    # Add reference lines
-                    x_min = df_scatter[interest_col].min() * 0.5
-                    x_max = df_scatter[interest_col].max() * 2
-                    x_range = [x_min, x_max]
+                n_interest_non_positive = coverage_chart["n_interest_non_positive"]
+                if n_interest_non_positive > 0:
+                    st.info(f"{n_interest_non_positive} year(s) Interest <= 0 not applicable for coverage lines.")
 
-                    # Line 1: EBIT = Interest (Coverage = 1x)
-                    fig_scatter.add_trace(go.Scatter(
-                        x=x_range,
-                        y=x_range,
-                        mode='lines',
-                        name='Coverage = 1x',
-                        line=dict(color='#E74C3C', width=2, dash='dash'),
-                        showlegend=True
-                    ))
+                high_risk_non_applicable_years = coverage_chart["high_risk_interest_non_positive_years"]
+                if high_risk_non_applicable_years:
+                    years_text = ", ".join(high_risk_non_applicable_years)
+                    st.warning(f"High Risk year(s) with Interest <= 0 are not plotted for coverage lines: {years_text}.")
 
-                    # Line 2: EBIT = 2x Interest (Coverage = 2x)
-                    fig_scatter.add_trace(go.Scatter(
-                        x=x_range,
-                        y=[x * 2 for x in x_range],
-                        mode='lines',
-                        name='Coverage = 2x',
-                        line=dict(color='#2ECC71', width=2, dash='dash'),
-                        showlegend=True
-                    ))
-
-                    fig_scatter.update_xaxes(type="log")
-                    fig_scatter.update_yaxes(type="log")
-                    fig_scatter.update_layout(height=400)
-                    st.plotly_chart(fig_scatter, use_container_width=True)
+                n_ebit_non_positive = coverage_chart["n_ebit_non_positive"]
+                if n_ebit_non_positive > 0:
+                    st.info(f"{n_ebit_non_positive} year(s) with EBIT <= 0 are excluded from log-scale coverage scatter.")
+            else:
+                st.info("Missing required columns for EBIT vs Interest coverage chart.")
 
         with tab_ratios:
             if not df_year.empty:
